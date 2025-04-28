@@ -17,5 +17,33 @@ myVertex::~myVertex(void)
 
 void myVertex::computeNormal()
 {
-	/**** TODO ****/
+    if (originof == nullptr) {
+        return;
+    }
+
+    myVector3D accumulatedNormal(0.0, 0.0, 0.0);
+    myHalfedge* current = originof;
+    myHalfedge* iter = current;
+
+    do {
+        myFace* adjacentFace = iter->adjacent_face;
+
+        if (adjacentFace != nullptr) {
+            if (adjacentFace->normal == nullptr || adjacentFace->normal->length() < 1e-6) {
+                adjacentFace->computeNormal();
+            }
+            accumulatedNormal += *(adjacentFace->normal);
+        }
+
+        if (iter->twin == nullptr || iter->twin->next == nullptr) {
+            break;
+        }
+        iter = iter->twin->next;
+
+    } while (iter != current);
+
+    if (accumulatedNormal.length() > 1e-6) {
+        accumulatedNormal.normalize();
+        *normal = accumulatedNormal;
+    }
 }

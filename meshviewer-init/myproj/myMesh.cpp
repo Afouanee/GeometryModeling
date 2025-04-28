@@ -138,45 +138,28 @@ bool myMesh::readFile(std::string filename)
 }
 
 
+
 void myMesh::computeNormals()
 {
-	// Calcul des normales des faces
-	for (myFace* face : faces) {
-		myHalfedge* h0 = face->adjacent_halfedge;
-		myHalfedge* h1 = h0->next;
-		myHalfedge* h2 = h1->next;
-
-		myPoint3D* p0 = h0->source->point;
-		myPoint3D* p1 = h1->source->point;
-		myPoint3D* p2 = h2->source->point;
-
-		myVector3D u(p1->X - p0->X, p1->Y - p0->Y, p1->Z - p0->Z);
-		myVector3D v(p2->X - p0->X, p2->Y - p0->Y, p2->Z - p0->Z);
-
-		myVector3D n = u ^ v; // produit vectoriel
-		n.normalize();        // normalisation
-
-		face->normal = n;
+	for (int i = 0; i < vertices.size(); i++) {
+		if (vertices[i]->normal) {
+			vertices[i]->normal->clear();
+		}
+		else {
+			vertices[i]->normal = new myVector3D();
+		}
 	}
 
-	// Remise à zéro des normales sommets
-	for (myVertex* v : vertices) {
-		v->normal = myVector3D(0.0, 0.0, 0.0);
+	for (int i = 0; i < faces.size(); i++) {
+		if (faces[i]) {
+			faces[i]->computeNormal();
+		}
 	}
 
-	// Moyenne des normales des faces pour chaque sommet
-	for (myFace* face : faces) {
-		myHalfedge* start = face->adjacent_halfedge;
-		myHalfedge* h = start;
-		do {
-			h->source->normal += face->normal;
-			h = h->next;
-		} while (h != start);
-	}
-
-	// Normalisation finale des normales sommets
-	for (myVertex* v : vertices) {
-		v->normal.normalize();
+	for (int i = 0; i < vertices.size(); i++) {
+		if (vertices[i]) {
+			vertices[i]->computeNormal();
+		}
 	}
 }
 
