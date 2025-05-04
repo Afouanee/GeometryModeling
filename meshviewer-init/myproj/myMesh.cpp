@@ -1,4 +1,4 @@
-#include "myMesh.h"
+﻿#include "myMesh.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -125,9 +125,6 @@ bool myMesh::readFile(std::string filename)
 
 			faces.push_back(f); // add the face to the list of faces
 
-			cout << "f";
-			while (myline >> u) cout << " " << atoi((u.substr(0, u.find("/"))).c_str());
-			cout << endl;
 		}
 	}
 
@@ -221,15 +218,109 @@ void myMesh::subdivisionCatmullClark()
 	/**** TODO ****/
 }
 
-
 void myMesh::triangulate()
 {
-	/**** TODO ****/
+	// Copie la liste des faces existantes pour ne pas modifier l'original pendant l'itération
+	std::vector<myFace*> initialFaces = faces;
+
+	// Pour chaque face dans la liste copiée, on procède à la triangulation
+	for (myFace* face : initialFaces)
+	{
+		triangulate(face);  // Appel de la fonction de triangulation pour chaque face
+	}
 }
 
-//return false if already triangle, true othewise.
-bool myMesh::triangulate(myFace* f)
+bool myMesh::triangulate(myFace* face)
 {
-	/**** TODO ****/
-	return false;
+	// Vérifie si la face est valide et contient des half-edges adjacents
+	if (!face || !face->adjacent_halfedge) return false;
+
+	// Comptabilise le nombre de sommets de la face en suivant les half-edges
+	int numVertices = 1;  // On commence à 1 car on compte le premier sommet
+	myHalfedge* halfEdge = face->adjacent_halfedge->next;
+	while (halfEdge != face->adjacent_halfedge) {
+		numVertices++;
+		halfEdge = halfEdge->next;
+	}
+
+	// Si la face est déjà un triangle (3 sommets ou moins), on n'a rien à faire
+	if (numVertices <= 3) return false;
+
+	// On commence à parcourir les sommets de la face pour les stocker
+	std::vector<myVertex*> vertices;
+	myHalfedge* startEdge = face->adjacent_halfedge;
+	halfEdge = startEdge;
+	do {
+		vertices.push_back(halfEdge->source);  // Stocke le sommet du half-edge courant
+
+		// Supprime proprement l'half-edge de la liste des half-edges
+		auto it = std::find(halfedges.begin(), halfedges.end(), halfEdge);
+		if (it != halfedges.end()) halfedges.erase(it);
+		delete halfEdge;  // Libération de la mémoire
+
+		halfEdge = halfEdge->next;  // Passe au half-edge suivant
+	} while (halfEdge != startEdge);
+
+	// Supprime la face originale de la liste des faces
+	auto faceIt = std::find(faces.begin(), faces.end(), face);
+	if (faceIt != faces.end()) {
+		faces.erase(faceIt);
+	}
+	delete face;  // Libère la mémoire allouée pour la face
+
+	// Map pour gérer les twin edges, utilisant un couple de sommets
+	std::map<std::pair<myVertex*, myVertex*>, myHalfedge*> edgePairs;
+
+	// Crée des triangles en partant du premier sommet
+	for (size_t i = 1; i < vertices.size() - 1; ++i) {
+		// Création d'une nouvelle face pour chaque triangle
+		myFace* newFace = new myFace();
+
+		// Création des trois half-edges pour le triangle
+		myHalfedge* he1 = new myHalfedge();
+		myHalfedge* he2 = new myHalfedge();
+		myHalfedge* he3 = new myHalfedge();
+
+		// Définition des sources des half-edges
+		he1->source = vertices[0];
+		he2->source = vertices[i];
+		he3->source = vertices[i + 1];
+
+		// Relie les half-edges entre eux (circuit fermé)
+		he1->next = he2; he2->next = he3; he3->next = he1;
+		he1->prev = he3; he2->prev = he1; he3->prev = he2;
+
+		// Associe les half-edges à la face correspondante
+		he1->adjacent_face = newFace;
+		he2->adjacent_face = newFace;
+		he3->adjacent_face = newFace;
+		newFace->adjacent_halfedge = he1;
+
+		// Ajoute la nouvelle face à la liste des faces
+		faces.push_back(newFace);
+
+		// Ajoute les half-edges et gère les twins
+		auto addTwinEdge = [&](myHalfedge* halfEdge, myVertex* from, myVertex* to) {
+			std::pair<myVertex*, myVertex*> key = std::make_pair(from, to);
+			std::pair<myVertex*, myVertex*> twinKey = std::make_pair(to, from);
+
+			// Si le twin edge existe, on les lie
+			if (edgePairs.count(twinKey)) {
+				myHalfedge* twin = edgePairs[twinKey];
+				halfEdge->twin = twin;
+				twin->twin = halfEdge;
+			}
+
+			edgePairs[key] = halfEdge;  // Ajoute l'edge à la map
+			halfedges.push_back(halfEdge);  // Ajoute le half-edge à la liste globale
+			};
+
+		// Ajout des twin edges pour les trois half-edges du triangle
+		addTwinEdge(he1, he1->source, he2->source);
+		addTwinEdge(he2, he2->source, he3->source);
+		addTwinEdge(he3, he3->source, he1->source);
+	}
+
+	// Retourne true après avoir triangulé avec succès
+	return true;
 }
