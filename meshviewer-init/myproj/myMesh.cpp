@@ -220,125 +220,106 @@ void myMesh::subdivisionCatmullClark()
 
 void myMesh::triangulate()
 {
-	std::vector<myFace*> old_faces = faces;
+	vector<myFace*> old_faces = faces;
+
 	for (myFace* f : old_faces)
-	{
-		if (f != nullptr)
-			triangulate(f);
-	}
-	linkTwinsIfMissing();
-	checkMesh();
+		triangulate(f);
+
+	computeNormals();
+
 }
 
-//return false if already triangle, true othewise.
-bool myMesh::triangulate(myFace* f)
+// Retourne false si la face est déjà triangulaire, true sinon (triangulation effectuée)
+bool myMesh::triangulate(myFace* face)
 {
-	if (!f) return false;
+	if (!face) return false;
 
-	std::vector<myHalfedge*> border;
-	myHalfedge* he = f->adjacent_halfedge;
+	// Collecte de tous les half-edges formant la boucle autour de la face
+	std::vector<myHalfedge*> edgeLoop;
+	myHalfedge* first = face->adjacent_halfedge;
+	myHalfedge* current = first;
 
-	// Collecte les sommets dans l'ordre
 	do {
-		border.push_back(he);
-		he = he->next;
-	} while (he != f->adjacent_halfedge);
+		edgeLoop.push_back(current);
+		current = current->next;
+	} while (current != first);
 
-	int num = halfedges.size();
-	if (num <= 3) return false;
+	// Si la face est déjà un triangle, pas besoin de trianguler
+	if (edgeLoop.size() == 3)
+		return false;
 
+	// On garde la première origine pour former les triangles depuis ce sommet
+	myVertex* origin = edgeLoop[0]->source;
 
-	std::vector<myVertex*> v;
-	for (myHalfedge* he : border)
+	// On génère les triangles en utilisant un "fan triangulation" depuis 'origin'
+	for (size_t i = 1; i < edgeLoop.size() - 1; ++i)
 	{
-		v.push_back(he->source);
+		// Création d'une nouvelle face
+		myFace* triangle = new myFace();
+		faces.push_back(triangle);
+
+		// Création des trois nouveaux half-edges pour cette face
+		myHalfedge* e1 = new myHalfedge();
+		myHalfedge* e2 = new myHalfedge();
+		myHalfedge* e3 = new myHalfedge();
+
+		// Attribution des sommets sources aux half-edges
+		e1->source = origin;
+		e2->source = edgeLoop[i]->source;
+		e3->source = edgeLoop[i + 1]->source;
+
+		// Connexion des half-edges entre eux pour former une boucle
+		e1->next = e2; e2->next = e3; e3->next = e1;
+		e1->prev = e3; e2->prev = e1; e3->prev = e2;
+
+		// Affectation de la nouvelle face aux half-edges
+		e1->adjacent_face = triangle;
+		e2->adjacent_face = triangle;
+		e3->adjacent_face = triangle;
+		triangle->adjacent_halfedge = e1;
+
+		// Ajout dans les conteneurs
+		halfedges.push_back(e1);
+		halfedges.push_back(e2);
+		halfedges.push_back(e3);
+		if (!origin->originof) origin->originof = e1;
+		if (!e2->source->originof) e2->source->originof = e2;
+		if (!e3->source->originof) e3->source->originof = e3;
 	}
 
-	for (myHalfedge* he : border)
+	// Nettoyage : suppression des anciens half-edges
+	for (myHalfedge* oldEdge : edgeLoop)
 	{
-		if (he->source && he->source->originof == he)
-			he->source->originof = nullptr;
+		if (oldEdge->source && oldEdge->source->originof == oldEdge)
+			oldEdge->source->originof = nullptr;
 
-		if (he->twin)
-			he->twin->twin = nullptr;
+		auto it = std::find(halfedges.begin(), halfedges.end(), oldEdge);
+		if (it != halfedges.end())
+			halfedges.erase(it);
 
-		auto it = std::find(halfedges.begin(), halfedges.end(), he);
-		if (it != halfedges.end()) halfedges.erase(it);
-		delete he;
+		if (oldEdge->twin)
+			oldEdge->twin->twin = nullptr;
+
+		delete oldEdge;
 	}
 
-	auto it = std::find(faces.begin(), faces.end(), f);
-	if (it != faces.end()) faces.erase(it);
-	delete f;
+	// Suppression de la face d'origine (non triangulaire)
+	auto faceIt = std::find(faces.begin(), faces.end(), face);
+	if (faceIt != faces.end())
+		faces.erase(faceIt);
+	delete face;
 
-	myHalfedge* twin_tmp = nullptr;
-
-	for (int i = 1; i < v.size() - 1; ++i)
-	{
-		myFace* newFace = new myFace();
-
-		myHalfedge* he0 = new myHalfedge(); // v0 -> vi
-		myHalfedge* he1 = new myHalfedge(); // vi -> vi+1
-		myHalfedge* he2 = new myHalfedge(); // vi+1 -> v0
-
-		he0->source = v[0];
-		he1->source = v[i];
-		he2->source = v[i + 1];
-
-		he0->next = he1; he1->next = he2; he2->next = he0;
-		he0->prev = he2; he1->prev = he0; he2->prev = he1;
-
-		he0->adjacent_face = newFace;
-		he1->adjacent_face = newFace;
-		he2->adjacent_face = newFace;
-
-		newFace->adjacent_halfedge = he0;
-
-		// Gestion du twin entre triangles successifs (logique de fan)
-		if (twin_tmp != nullptr)
-		{
-			he0->twin = twin_tmp;
-			twin_tmp->twin = he0;
+	// Mise à jour des twins : on connecte les half-edges opposés
+	std::map<std::pair<myVertex*, myVertex*>, myHalfedge*> edgeMap;
+	for (myHalfedge* he : halfedges) {
+		edgeMap[{he->source, he->next->source}] = he;
+	}
+	for (myHalfedge* he : halfedges) {
+		auto reverseKey = std::make_pair(he->next->source, he->source);
+		if (edgeMap.count(reverseKey)) {
+			he->twin = edgeMap[reverseKey];
 		}
-		twin_tmp = he1; // Pour le prochain triangle
-
-		// Ajout au mesh
-		halfedges.push_back(he0);
-		halfedges.push_back(he1);
-		halfedges.push_back(he2);
-		faces.push_back(newFace);
 	}
 
 	return true;
-}
-void myMesh::linkTwinsIfMissing()
-{
-	std::map<std::pair<myVertex*, myVertex*>, myHalfedge*> halfedge_pairs;
-
-	for (myHalfedge* edge : halfedges)
-	{
-		// Vérification de validité
-		if (!edge || !edge->next || !edge->source || !edge->next->source)
-			continue;
-
-		myVertex* start = edge->source;
-		myVertex* end = edge->next->source;
-
-		std::pair<myVertex*, myVertex*> direct = std::make_pair(start, end);
-		std::pair<myVertex*, myVertex*> inverse = std::make_pair(end, start);
-
-		auto it = halfedge_pairs.find(inverse);
-		if (it != halfedge_pairs.end())
-		{
-			myHalfedge* twin_candidate = it->second;
-			if (!edge->twin && !twin_candidate->twin) {
-				edge->twin = twin_candidate;
-				twin_candidate->twin = edge;
-			}
-		}
-		else
-		{
-			halfedge_pairs[direct] = edge;
-		}
-	}
 }
