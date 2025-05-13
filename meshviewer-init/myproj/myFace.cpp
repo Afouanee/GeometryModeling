@@ -17,45 +17,19 @@ myFace::~myFace(void)
 
 void myFace::computeNormal()
 {
-    // Si la face n'a pas d'arête associée, impossible de calculer sa normale
-    if (adjacent_halfedge == nullptr) {
+    if (!adjacent_halfedge || !adjacent_halfedge->next || !adjacent_halfedge->next->next)
         return;
-    }
 
-    myVector3D accumulatedNormal(0.0, 0.0, 0.0);
+    myPoint3D* p0 = adjacent_halfedge->source->point;
+    myPoint3D* p1 = adjacent_halfedge->next->source->point;
+    myPoint3D* p2 = adjacent_halfedge->next->next->source->point;
+    if (!p0 || !p1 || !p2) return;
 
-    myHalfedge* currentEdge = adjacent_halfedge;
-    myPoint3D* referencePoint = currentEdge->source->point;
+    if (!normal)
+        normal = new myVector3D();
 
-    myHalfedge* edge1 = currentEdge;
-    myHalfedge* edge2 = edge1->next;
-
-    // Parcours des triangles formés autour du point de référence
-    while (edge2->next != currentEdge)
-    {
-        // Points des sommets suivants
-        myPoint3D* point1 = edge1->next->source->point;
-        myPoint3D* point2 = edge2->next->source->point;
-
-        // Création de deux vecteurs basés sur le point de référence
-        myVector3D vecU = *point1 - *referencePoint;
-        myVector3D vecV = *point2 - *referencePoint;
-
-        // Le produit vectoriel donne une normale locale pour ce triangle
-        myVector3D localNormal = vecU.crossproduct(vecV);
-
-        // On ajoute cette normale au total
-        accumulatedNormal += localNormal;
-
-        // Avancer dans la liste des arêtes
-        edge1 = edge2;
-        edge2 = edge2->next;
-    }
-
-    // Normalisation pour obtenir une normale unitaire
-    accumulatedNormal.normalize();
-
-    // Affecter le résultat à la normale de la face
-    *normal = accumulatedNormal;
+    normal->setNormal(p0, p1, p2);  // méthode fiable et déjà définie
+    normal->normalize();
 }
+
 

@@ -138,27 +138,13 @@ bool myMesh::readFile(std::string filename)
 
 void myMesh::computeNormals()
 {
-	for (int i = 0; i < vertices.size(); i++) {
-		if (vertices[i]->normal) {
-			vertices[i]->normal->clear();
-		}
-		else {
-			vertices[i]->normal = new myVector3D();
-		}
-	}
+	for (myFace* f : faces)
+		f->computeNormal();
 
-	for (int i = 0; i < faces.size(); i++) {
-		if (faces[i]) {
-			faces[i]->computeNormal();
-		}
-	}
-
-	for (int i = 0; i < vertices.size(); i++) {
-		if (vertices[i]) {
-			vertices[i]->computeNormal();
-		}
-	}
+	for (myVertex* v : vertices)
+		v->computeNormal();
 }
+
 
 void myMesh::normalize()
 {

@@ -15,35 +15,26 @@ myVertex::~myVertex(void)
 	if (normal) delete normal;
 }
 
+
 void myVertex::computeNormal()
 {
-    if (originof == nullptr) {
-        return;
-    }
+    if (!originof) return;
 
-    myVector3D accumulatedNormal(0.0, 0.0, 0.0);
-    myHalfedge* current = originof;
-    myHalfedge* iter = current;
+    if (!normal)
+        normal = new myVector3D();
 
+    normal->clear();
+
+    myHalfedge* start = originof;
+    myHalfedge* current = start;
     do {
-        myFace* adjacentFace = iter->adjacent_face;
-
-        if (adjacentFace != nullptr) {
-            if (adjacentFace->normal == nullptr || adjacentFace->normal->length() < 1e-6) {
-                adjacentFace->computeNormal();
-            }
-            accumulatedNormal += *(adjacentFace->normal);
+        if (current->adjacent_face && current->adjacent_face->normal) {
+            *normal = *normal + *(current->adjacent_face->normal);
         }
 
-        if (iter->twin == nullptr || iter->twin->next == nullptr) {
-            break;
-        }
-        iter = iter->twin->next;
+        current = (current->twin) ? current->twin->next : nullptr;
+    } while (current && current != start);
 
-    } while (iter != current);
-
-    if (accumulatedNormal.length() > 1e-6) {
-        accumulatedNormal.normalize();
-        *normal = accumulatedNormal;
-    }
+    normal->normalize();
 }
+

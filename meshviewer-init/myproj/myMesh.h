@@ -27,7 +27,6 @@ public:
 
 	void triangulate();
 	bool triangulate(myFace *);
-	void linkTwinsIfMissing();
 
 	void clear();
 
