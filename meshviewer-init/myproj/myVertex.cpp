@@ -37,4 +37,3 @@ void myVertex::computeNormal()
 
     normal->normalize();
 }
-

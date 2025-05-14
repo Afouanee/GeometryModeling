@@ -15,6 +15,7 @@ myFace::~myFace(void)
 	if (normal) delete normal;
 }
 
+
 void myFace::computeNormal()
 {
     if (!adjacent_halfedge || !adjacent_halfedge->next || !adjacent_halfedge->next->next)
@@ -31,5 +32,3 @@ void myFace::computeNormal()
     normal->setNormal(p0, p1, p2);  // méthode fiable et déjà définie
     normal->normalize();
 }
-
-

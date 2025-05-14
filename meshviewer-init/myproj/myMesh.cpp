@@ -72,10 +72,9 @@ bool myMesh::readFile(std::string filename)
 			myline >> x >> y >> z;
 			cout << "v " << x << " " << y << " " << z << endl;
 			myPoint3D* p = new myPoint3D(x, y, z);
-			myVertex* v = new myVertex();
+			myVertex* v = new myVertex;
 			v->point = p;
 			vertices.push_back(v);
-
 		}
 		else if (t == "mtllib") {}
 		else if (t == "usemtl") {}
@@ -83,68 +82,78 @@ bool myMesh::readFile(std::string filename)
 		else if (t == "f")
 		{
 			faceids.clear();
-			while (myline >> u) // read indices of vertices from a face into a container - it helps to access them later 
-				faceids.push_back(atoi((u.substr(0, u.find("/"))).c_str()) - 1);
-			if (faceids.size() < 3) // ignore degenerate faces
-				continue;
-
-			hedges = new myHalfedge * [faceids.size()]; // allocate the array for storing pointers to half-edges
-			for (unsigned int i = 0; i < faceids.size(); i++)
-				hedges[i] = new myHalfedge(); // pre-allocate new half-edges
-
-			myFace* f = new myFace(); // allocate the new face
-			f->adjacent_halfedge = hedges[0]; // connect the face with incident edge
-
-			for (unsigned int i = 0; i < faceids.size(); i++)
-			{
-				int iplusone = (i + 1) % faceids.size();
-				int iminusone = (i - 1 + faceids.size()) % faceids.size();
-
-
-				hedges[i]->next = hedges[iplusone];
-				hedges[i]->prev = hedges[iminusone];
-
-				hedges[i]->source = vertices[faceids[i]];
-
-				hedges[i]->adjacent_face = f;
-
-				auto twin = make_pair(faceids[iplusone], faceids[i]);
-				it = twin_map.find(twin);
-				if (it != twin_map.end()) {
-					hedges[i]->twin = it->second;
-					it->second->twin = hedges[i];
-				}
-				else {
-					twin_map[make_pair(faceids[i], faceids[iplusone])] = hedges[i];
-				}
-
-				vertices[faceids[i]]->originof = hedges[i]; // connect the vertex with incident edge
-
-				halfedges.push_back(hedges[i]); // add the half-edge to the list of half-edges
+			vector<int> face_indices;
+			while (myline >> u) { // read indices of vertices from a face into a container - it helps to access them later
+				int vertex_index = atoi((u.substr(0, u.find("/"))).c_str()) - 1;
+				face_indices.push_back(vertex_index);
 			}
 
-			faces.push_back(f); // add the face to the list of faces
+			myFace* face = new myFace();
+			faces.push_back(face);
 
+			vector<myHalfedge*> face_halfedges;
+			for (size_t i = 0; i < face_indices.size(); ++i) {
+				int current_index = face_indices[i];
+				int next_index = face_indices[(i + 1) % face_indices.size()];
+
+				myHalfedge* he = new myHalfedge();
+				if (vertices[current_index]->originof == nullptr)
+					vertices[current_index]->originof = he;
+				he->source = vertices[current_index];
+				he->adjacent_face = face;
+				face_halfedges.push_back(he);
+
+				pair<int, int> edge_key(current_index, next_index);
+				twin_map[edge_key] = he;
+
+				pair<int, int> twin_key(next_index, current_index);
+				it = twin_map.find(twin_key);
+
+				if (it != twin_map.end()) {
+					he->twin = it->second;
+					it->second->twin = he;
+				}
+			}
+
+			for (size_t i = 0; i < face_halfedges.size(); ++i) {
+				face_halfedges[i]->next = face_halfedges[(i + 1) % face_halfedges.size()];
+				face_halfedges[i]->prev = face_halfedges[(i + face_halfedges.size() - 1) % face_halfedges.size()];
+			}
+
+			face->adjacent_halfedge = face_halfedges[0];
+			halfedges.insert(halfedges.end(), face_halfedges.begin(), face_halfedges.end());
 		}
 	}
 
 	checkMesh();
 	normalize();
+	for (myHalfedge* he : halfedges) {
+		if (he->source && !he->source->originof)
+			he->source->originof = he;
+	}
 
 	return true;
 }
 
 
-
 void myMesh::computeNormals()
 {
-	for (myFace* f : faces)
-		f->computeNormal();
+	for (int i = 0; i < vertices.size(); i++) {
+		if (vertices[i] && vertices[i]->originof && vertices[i]->originof->twin)
+			vertices[i]->computeNormal();
+	}
+	for (int i = 0; i < faces.size(); i++) {
+		if (faces[i]) {
+			faces[i]->computeNormal();
+		}
+	}
 
-	for (myVertex* v : vertices)
-		v->computeNormal();
+	for (int i = 0; i < vertices.size(); i++) {
+		if (vertices[i]) {
+			vertices[i]->computeNormal();
+		}
+	}
 }
-
 
 void myMesh::normalize()
 {
