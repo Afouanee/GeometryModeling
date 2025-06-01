@@ -388,7 +388,7 @@ void initMesh()
 	closest_face = NULL;
 
 	m = new myMesh();
-	if (m->readFile("dolphin.obj")) {
+	if (m->readFile("cube.obj")) {
 		//m->triangulate();
 		m->computeNormals();
 		makeBuffers(m);
