@@ -18,17 +18,18 @@ myFace::~myFace(void)
 
 void myFace::computeNormal()
 {
-    if (!adjacent_halfedge || !adjacent_halfedge->next || !adjacent_halfedge->next->next)
-        return;
+    myHalfedge* he = adjacent_halfedge;
+    myVector3D v1, v2;
 
-    myPoint3D* p0 = adjacent_halfedge->source->point;
-    myPoint3D* p1 = adjacent_halfedge->next->source->point;
-    myPoint3D* p2 = adjacent_halfedge->next->next->source->point;
-    if (!p0 || !p1 || !p2) return;
+    v1.dX = he->next->source->point->X - he->source->point->X;
+    v1.dY = he->next->source->point->Y - he->source->point->Y;
+    v1.dZ = he->next->source->point->Z - he->source->point->Z;
 
-    if (!normal)
-        normal = new myVector3D();
+    he = he->next;
+    v2.dX = he->next->source->point->X - he->source->point->X;
+    v2.dY = he->next->source->point->Y - he->source->point->Y;
+    v2.dZ = he->next->source->point->Z - he->source->point->Z;
 
-    normal->setNormal(p0, p1, p2);  // méthode fiable et déjà définie
+    normal->crossproduct(v1, v2);
     normal->normalize();
 }

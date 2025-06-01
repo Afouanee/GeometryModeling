@@ -165,6 +165,12 @@ void menu(int item)
 			exit(0);
 			break;
 		}
+	case MENU_SIMPLIFY:
+		{
+			m->simplify();
+			makeBuffers(m);
+			break;
+		}
 	}
 	glutPostRedisplay();
 }
@@ -259,20 +265,16 @@ void display()
 			if ((*it)->twin == NULL) continue;
 			myVertex* v2 = (*it)->twin->source;
 
-			// Normales des faces adjacentes
 			myFace* face1 = e->adjacent_face;
 			myFace* face2 = e->twin->adjacent_face;
 
-			// Direction vers la caméra
 			glm::vec3 dir1(face1->normal->dX, face1->normal->dY, face1->normal->dZ);
 			glm::vec3 dir2(face2->normal->dX, face2->normal->dY, face2->normal->dZ);
 			glm::vec3 edge_center = (glm::vec3(v1->point->X, v1->point->Y, v1->point->Z) + glm::vec3(v2->point->X, v2->point->Y, v2->point->Z)) / 2.0f;
 
-			// Calcul de l'angle entre la normale des faces et la direction de la caméra
 			float angle1 = glm::dot(glm::normalize(dir1), glm::normalize(camera_position - edge_center));
 			float angle2 = glm::dot(glm::normalize(dir2), glm::normalize(camera_position - edge_center));
 
-			// Si une face est visible (angle > 0), l'arête est une arête de silhouette
 			if ((angle1 > 0 && angle2 < 0) || (angle1 < 0 && angle2 > 0))
 			{
 				silhouette_edges.push_back(v1->index);
@@ -387,7 +389,7 @@ void initMesh()
 
 	m = new myMesh();
 	if (m->readFile("dolphin.obj")) {
-		m->triangulate();
+		//m->triangulate();
 		m->computeNormals();
 		makeBuffers(m);
 	}

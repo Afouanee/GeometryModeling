@@ -30,18 +30,70 @@ void myMesh::clear()
 	vector<myHalfedge*> empty_halfedges; halfedges.swap(empty_halfedges);
 	vector<myFace*> empty_faces;         faces.swap(empty_faces);
 }
-
 void myMesh::checkMesh()
 {
-	vector<myHalfedge*>::iterator it;
-	for (it = halfedges.begin(); it != halfedges.end(); it++)
-	{
-		if ((*it)->twin == NULL)
-			break;
+	bool erreur = false;
+
+	for (unsigned int i = 0; i < halfedges.size(); ++i) {
+		myHalfedge* he = halfedges[i];
+		if (he->twin == nullptr) {
+			std::cout << "Erreur: demi-arête " << i << " n'a pas de twin." << std::endl;
+			erreur = true;
+		}
+		else if (he->twin->twin != he) {
+			std::cout << "Erreur: demi-arête " << i << " a un twin incohérent." << std::endl;
+			erreur = true;
+		}
 	}
-	if (it != halfedges.end())
-		cout << "Error! Not all edges have their twins!\n";
-	else cout << "Each edge has a twin!\n";
+
+	for (unsigned int i = 0; i < halfedges.size(); ++i) {
+		myHalfedge* he = halfedges[i];
+		if (he->next == nullptr) {
+			std::cout << "Erreur: demi-arête " << i << " n'a pas de next." << std::endl;
+			erreur = true;
+		}
+		if (he->prev == nullptr) {
+			std::cout << "Erreur: demi-arête " << i << " n'a pas de prev." << std::endl;
+			erreur = true;
+		}
+	}
+
+	for (unsigned int i = 0; i < faces.size(); ++i) {
+		myFace* f = faces[i];
+		if (f->adjacent_halfedge == nullptr) {
+			std::cout << "Erreur: face " << i << " n'a pas de demi-arête adjacente." << std::endl;
+			erreur = true;
+			continue;
+		}
+
+		myHalfedge* start = f->adjacent_halfedge;
+		myHalfedge* courant = start;
+		int compteur = 0;
+		do {
+			if (courant == nullptr) {
+				std::cout << "Erreur: face " << i << " a une boucle cassée." << std::endl;
+				erreur = true;
+				break;
+			}
+			courant = courant->next;
+			compteur++;
+			if (compteur > halfedges.size()) {
+				std::cout << "Erreur: face " << i << " boucle trop longue." << std::endl;
+				erreur = true;
+				break;
+			}
+		} while (courant != start);
+	}
+
+	for (unsigned int i = 0; i < vertices.size(); ++i) {
+		myVertex* v = vertices[i];
+		if (v->originof == nullptr) {
+			std::cout << "Attention: sommet " << i << " n'a pas de demi-arête d'origine." << std::endl;
+		}
+	}
+
+	if (!erreur)
+		std::cout << "Vérification terminée: pas d'erreur détectée." << std::endl;
 }
 
 
@@ -224,12 +276,10 @@ void myMesh::triangulate()
 
 }
 
-// Retourne false si la face est déjà triangulaire, true sinon (triangulation effectuée)
 bool myMesh::triangulate(myFace* face)
 {
 	if (!face) return false;
 
-	// Collecte de tous les half-edges formant la boucle autour de la face
 	std::vector<myHalfedge*> edgeLoop;
 	myHalfedge* first = face->adjacent_halfedge;
 	myHalfedge* current = first;
@@ -239,41 +289,32 @@ bool myMesh::triangulate(myFace* face)
 		current = current->next;
 	} while (current != first);
 
-	// Si la face est déjà un triangle, pas besoin de trianguler
 	if (edgeLoop.size() == 3)
 		return false;
 
-	// On garde la première origine pour former les triangles depuis ce sommet
 	myVertex* origin = edgeLoop[0]->source;
 
-	// On génère les triangles en utilisant un "fan triangulation" depuis 'origin'
 	for (size_t i = 1; i < edgeLoop.size() - 1; ++i)
 	{
-		// Création d'une nouvelle face
 		myFace* triangle = new myFace();
 		faces.push_back(triangle);
 
-		// Création des trois nouveaux half-edges pour cette face
 		myHalfedge* e1 = new myHalfedge();
 		myHalfedge* e2 = new myHalfedge();
 		myHalfedge* e3 = new myHalfedge();
 
-		// Attribution des sommets sources aux half-edges
 		e1->source = origin;
 		e2->source = edgeLoop[i]->source;
 		e3->source = edgeLoop[i + 1]->source;
 
-		// Connexion des half-edges entre eux pour former une boucle
 		e1->next = e2; e2->next = e3; e3->next = e1;
 		e1->prev = e3; e2->prev = e1; e3->prev = e2;
 
-		// Affectation de la nouvelle face aux half-edges
 		e1->adjacent_face = triangle;
 		e2->adjacent_face = triangle;
 		e3->adjacent_face = triangle;
 		triangle->adjacent_halfedge = e1;
 
-		// Ajout dans les conteneurs
 		halfedges.push_back(e1);
 		halfedges.push_back(e2);
 		halfedges.push_back(e3);
@@ -282,7 +323,6 @@ bool myMesh::triangulate(myFace* face)
 		if (!e3->source->originof) e3->source->originof = e3;
 	}
 
-	// Nettoyage : suppression des anciens half-edges
 	for (myHalfedge* oldEdge : edgeLoop)
 	{
 		if (oldEdge->source && oldEdge->source->originof == oldEdge)
@@ -298,13 +338,11 @@ bool myMesh::triangulate(myFace* face)
 		delete oldEdge;
 	}
 
-	// Suppression de la face d'origine (non triangulaire)
 	auto faceIt = std::find(faces.begin(), faces.end(), face);
 	if (faceIt != faces.end())
 		faces.erase(faceIt);
 	delete face;
 
-	// Mise à jour des twins : on connecte les half-edges opposés
 	std::map<std::pair<myVertex*, myVertex*>, myHalfedge*> edgeMap;
 	for (myHalfedge* he : halfedges) {
 		edgeMap[{he->source, he->next->source}] = he;
@@ -317,4 +355,11 @@ bool myMesh::triangulate(myFace* face)
 	}
 
 	return true;
+}
+
+
+void myMesh::simplify()
+{
+
+
 }

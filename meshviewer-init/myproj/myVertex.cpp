@@ -16,24 +16,38 @@ myVertex::~myVertex(void)
 }
 
 
+
+
 void myVertex::computeNormal()
 {
     if (!originof) return;
 
-    if (!normal)
-        normal = new myVector3D();
+    normal->dX = 0.0; normal->dY = 0.0; normal->dZ = 0.0;
 
-    normal->clear();
+    myHalfedge* he = originof;
+    myHalfedge* start = he;
 
-    myHalfedge* start = originof;
-    myHalfedge* current = start;
-    do {
-        if (current->adjacent_face && current->adjacent_face->normal) {
-            *normal = *normal + *(current->adjacent_face->normal);
-        }
+    int nbfaces = 0;
+    do
+    {
+        if (!he || !he->adjacent_face || !he->adjacent_face->normal) break;
 
-        current = (current->twin) ? current->twin->next : nullptr;
-    } while (current && current != start);
+        normal->dX += he->adjacent_face->normal->dX;
+        normal->dY += he->adjacent_face->normal->dY;
+        normal->dZ += he->adjacent_face->normal->dZ;
+
+        nbfaces++;
+        if (!he->twin || !he->twin->next) break;
+        he = he->twin->next;
+
+    } while (he != start);
+
+    if (nbfaces > 0)
+    {
+        normal->dX /= nbfaces;
+        normal->dY /= nbfaces;
+        normal->dZ /= nbfaces;
+    }
 
     normal->normalize();
 }

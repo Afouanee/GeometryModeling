@@ -10,6 +10,7 @@ public:
 	myPoint3D *point;
 	myHalfedge *originof;
 
+
 	int index;  //use as you wish.
 
 	myVector3D *normal;

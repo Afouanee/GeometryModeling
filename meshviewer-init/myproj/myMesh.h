@@ -28,6 +28,10 @@ public:
 	void triangulate();
 	bool triangulate(myFace *);
 
+	void buildTwins();
+
+	void simplify();
+
 	void clear();
 
 	myMesh(void);
