@@ -167,8 +167,10 @@ void menu(int item)
 		}
 	case MENU_SIMPLIFY:
 		{
+			//m->triangulate(); 
 			m->simplify();
 			makeBuffers(m);
+			//glutPostRedisplay();
 			break;
 		}
 	}
@@ -390,6 +392,7 @@ void initMesh()
 	m = new myMesh();
 	if (m->readFile("cube.obj")) {
 		//m->triangulate();
+		//m->simplify();
 		m->computeNormals();
 		makeBuffers(m);
 	}

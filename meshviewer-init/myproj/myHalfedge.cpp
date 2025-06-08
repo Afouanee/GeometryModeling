@@ -1,4 +1,8 @@
 #include "myHalfedge.h"
+#include "myPoint3D.h"
+#include "myHalfedge.h"
+#include "myVertex.h"
+#include <cmath>
 
 myHalfedge::myHalfedge(void)
 {
@@ -23,4 +27,16 @@ void myHalfedge::copy(myHalfedge *ie)
 
 myHalfedge::~myHalfedge(void)
 {
+}
+
+
+float myHalfedge::computeLength() const {
+	if (!source || !next || !next->source || !source->point || !next->source->point)
+		return 0.0f;
+
+	float dx = source->point->X - next->source->point->X;
+	float dy = source->point->Y - next->source->point->Y;
+	float dz = source->point->Z - next->source->point->Z;
+
+	return std::sqrt(dx * dx + dy * dy + dz * dz);
 }

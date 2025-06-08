@@ -6,6 +6,8 @@
 #include <utility>
 #include <GL/glew.h>
 #include "myvector3d.h"
+#include <set>
+  
 
 using namespace std;
 
@@ -31,6 +33,7 @@ void myMesh::clear()
 	vector<myFace*> empty_faces;         faces.swap(empty_faces);
 }
 
+
 void myMesh::checkMesh()
 {
 	vector<myHalfedge*>::iterator it;
@@ -43,7 +46,6 @@ void myMesh::checkMesh()
 		cout << "Error! Not all edges have their twins!\n";
 	else cout << "Each edge has a twin!\n";
 }
-
 
 bool myMesh::readFile(std::string filename)
 {
@@ -306,8 +308,187 @@ bool myMesh::triangulate(myFace* face)
 }
 
 
-void myMesh::simplify()
-{
+
+void myMesh::simplify() {
 
 
+	if (halfedges.empty()) {
+		std::cout << "Maillage vide, pas de simplification." << std::endl;
+		return;
+	}
+	int numPhysicalEdges = halfedges.size() / 2;
+	int collapsesToAttempt = numPhysicalEdges / 20;
+	if (collapsesToAttempt == 0 && numPhysicalEdges > 4) {
+		collapsesToAttempt = 1;
+	}
+
+
+	for (int i = 0; i < collapsesToAttempt; ++i) {
+		if (vertices.size() <= 3 || halfedges.size() < 6) {
+			std::cout << "Maillage trop petit, simplification arrêtée." << std::endl;
+			break;
+		}
+
+		myHalfedge* minEdge = nullptr;
+		double minDistSq = std::numeric_limits<double>::max();
+
+		for (myHalfedge* he : halfedges) {
+			if (!he || !he->twin || !he->source || !he->twin->source || !he->source->point || !he->twin->source->point) continue;
+			if (he->source == he->twin->source) continue;
+
+			myPoint3D* p1 = he->source->point;
+			myPoint3D* p2 = he->twin->source->point;
+			double dx = p1->X - p2->X;
+			double dy = p1->Y - p2->Y;
+			double dz = p1->Z - p2->Z;
+			double currentDistSq = dx * dx + dy * dy + dz * dz;
+
+			if (currentDistSq < minDistSq) {
+				minDistSq = currentDistSq;
+				minEdge = he;
+			}
+		}
+
+		if (!minEdge) {
+			std::cout << "Aucune arête à effondrer." << std::endl;
+			break;
+		}
+
+		myVertex* A = minEdge->source;
+		myVertex* B = minEdge->twin->source;
+
+		if (!A || !B || !A->point || !B->point) {
+			std::cerr << "Erreur: Sommet nul dans minEdge." << std::endl;
+			continue;
+		}
+
+		myPoint3D midpoint(
+			(A->point->X + B->point->X) * 0.5,
+			(A->point->Y + B->point->Y) * 0.5,
+			(A->point->Z + B->point->Z) * 0.5
+		);
+		*(A->point) = midpoint;
+
+		myHalfedge* candidate_originof_from_B_edges = nullptr;
+		for (myHalfedge* he : halfedges) {
+			if (he && he->source == B) {
+				he->source = A;
+				if (he != minEdge && he != minEdge->twin) {
+					candidate_originof_from_B_edges = he;
+				}
+			}
+		}
+
+		std::set<myFace*> faces_to_delete_set;
+		if (minEdge->adjacent_face) faces_to_delete_set.insert(minEdge->adjacent_face);
+		if (minEdge->twin && minEdge->twin->adjacent_face) faces_to_delete_set.insert(minEdge->twin->adjacent_face);
+
+		for (myFace* f : faces) {
+			if (faces_to_delete_set.count(f)) continue;
+
+			std::set<myVertex*> uniqueVerticesInFace;
+			myHalfedge* start_he = f->adjacent_halfedge;
+			if (!start_he) { faces_to_delete_set.insert(f); continue; }
+
+			myHalfedge* current_he = start_he;
+			bool faceIsValid = true;
+			int edgeCount = 0;
+			int max_loop_count = vertices.size() + 5;
+
+			do {
+				if (!current_he || !current_he->source) { faceIsValid = false; break; }
+				if (!uniqueVerticesInFace.insert(current_he->source).second) { faceIsValid = false; break; }
+				edgeCount++;
+				current_he = current_he->next;
+				if (edgeCount > max_loop_count) { faceIsValid = false; break; }
+			} while (current_he != start_he && current_he != nullptr);
+
+			if (current_he == nullptr && start_he != nullptr) faceIsValid = false;
+			if (edgeCount < 3) faceIsValid = false;
+
+			if (!faceIsValid) {
+				faces_to_delete_set.insert(f);
+			}
+		}
+
+		std::set<myHalfedge*> halfedges_to_delete_set;
+		halfedges_to_delete_set.insert(minEdge);
+		if (minEdge->twin) halfedges_to_delete_set.insert(minEdge->twin);
+
+		for (myFace* f_del : faces_to_delete_set) {
+			myHalfedge* h = f_del->adjacent_halfedge;
+			if (!h) continue;
+			do {
+				halfedges_to_delete_set.insert(h);
+				h = h->next;
+			} while (h != f_del->adjacent_halfedge && h != nullptr);
+		}
+
+		if (A->originof == minEdge || A->originof == nullptr || halfedges_to_delete_set.count(A->originof)) {
+			A->originof = nullptr;
+			if (candidate_originof_from_B_edges && candidate_originof_from_B_edges->source == A && !halfedges_to_delete_set.count(candidate_originof_from_B_edges)) {
+				A->originof = candidate_originof_from_B_edges;
+			}
+			if (!A->originof) {
+				myHalfedge* he_around_A = minEdge->next;
+				if (he_around_A && !halfedges_to_delete_set.count(he_around_A) && he_around_A->source == A) {
+					A->originof = he_around_A;
+				}
+				else {
+					he_around_A = (minEdge->twin && minEdge->twin->next) ? minEdge->twin->next : nullptr;
+					if (he_around_A && !halfedges_to_delete_set.count(he_around_A) && he_around_A->source == A) {
+						A->originof = he_around_A;
+					}
+				}
+			}
+			if (!A->originof) {
+				for (myHalfedge* he_iter : halfedges) {
+					if (he_iter->source == A && !halfedges_to_delete_set.count(he_iter)) {
+						A->originof = he_iter;
+						break;
+					}
+				}
+			}
+		}
+
+		for (myHalfedge* he_iter : halfedges) {
+			if (halfedges_to_delete_set.count(he_iter)) {
+				continue;
+			}
+			if (he_iter->twin && halfedges_to_delete_set.count(he_iter->twin)) {
+				he_iter->twin = nullptr;
+			}
+		}
+
+		for (myHalfedge* he_del : halfedges_to_delete_set) {
+			auto it = std::find(halfedges.begin(), halfedges.end(), he_del);
+			if (it != halfedges.end()) {
+				halfedges.erase(it);
+			}
+			delete he_del;
+		}
+		myHalfedge* twin_of_min_edge = minEdge->twin;
+		minEdge = nullptr;
+		if (twin_of_min_edge) {}
+
+		for (myFace* f_del : faces_to_delete_set) {
+			auto it = std::find(faces.begin(), faces.end(), f_del);
+			if (it != faces.end()) {
+				faces.erase(it);
+			}
+			delete f_del;
+		}
+
+		auto it_v = std::find(vertices.begin(), vertices.end(), B);
+		if (it_v != vertices.end()) {
+			vertices.erase(it_v);
+		}
+		delete B;
+		B = nullptr;
+
+	}
+
+	std::cout << "Simplification terminée." << std::endl;
+	computeNormals();
+	checkMesh();
 }
