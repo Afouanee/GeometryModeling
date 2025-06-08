@@ -32,19 +32,66 @@ void myMesh::clear()
 	vector<myHalfedge*> empty_halfedges; halfedges.swap(empty_halfedges);
 	vector<myFace*> empty_faces;         faces.swap(empty_faces);
 }
-
-
 void myMesh::checkMesh()
 {
-	vector<myHalfedge*>::iterator it;
-	for (it = halfedges.begin(); it != halfedges.end(); it++)
-	{
-		if ((*it)->twin == NULL)
-			break;
+	bool error_found = false;
+
+	// Vérifier que chaque demi-arête a un twin cohérent
+	for (unsigned int i = 0; i < halfedges.size(); i++) {
+		myHalfedge* he = halfedges[i];
+		if (!he->twin) {
+			std::cout << "Erreur : demi-arête " << i << " sans twin." << std::endl;
+			error_found = true;
+		}
+		else if (he->twin->twin != he) {
+			std::cout << "Erreur : demi-arête " << i << " et son twin ne correspondent pas." << std::endl;
+			error_found = true;
+		}
 	}
-	if (it != halfedges.end())
-		cout << "Error! Not all edges have their twins!\n";
-	else cout << "Each edge has a twin!\n";
+
+	// Vérifier que les faces ont au moins 3 demi-arêtes et que next/prev sont cohérents
+	for (unsigned int i = 0; i < faces.size(); i++) {
+		myFace* f = faces[i];
+		if (!f->adjacent_halfedge) {
+			std::cout << "Erreur : face " << i << " sans demi-arête adjacente." << std::endl;
+			error_found = true;
+			continue;
+		}
+
+		myHalfedge* start = f->adjacent_halfedge;
+		myHalfedge* he = start;
+		int count = 0;
+
+		do {
+			if (!he->next) {
+				std::cout << "Erreur : demi-arête dans face " << i << " sans next." << std::endl;
+				error_found = true;
+				break;
+			}
+			if (he->next->prev != he) {
+				std::cout << "Erreur : incohérence next-prev dans face " << i << std::endl;
+				error_found = true;
+			}
+			he = he->next;
+			count++;
+		} while (he != start);
+
+		if (count < 3) {
+			std::cout << "Erreur : face " << i << " a moins de 3 demi-arêtes." << std::endl;
+			error_found = true;
+		}
+	}
+
+	// Vérifier que chaque vertex a une demi-arête d'origine
+	for (unsigned int i = 0; i < vertices.size(); i++) {
+		if (!vertices[i]->originof) {
+			std::cout << "Attention : vertex " << i << " sans demi-arête d'origine." << std::endl;
+		}
+	}
+
+	if (!error_found) {
+		std::cout << "CheckMesh OK : pas d'erreur détectée." << std::endl;
+	}
 }
 
 bool myMesh::readFile(std::string filename)

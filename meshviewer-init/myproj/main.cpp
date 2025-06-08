@@ -391,7 +391,7 @@ void initMesh()
 
 	m = new myMesh();
 	if (m->readFile("cube.obj")) {
-		//m->triangulate();
+		m->triangulate();
 		//m->simplify();
 		m->computeNormals();
 		makeBuffers(m);
