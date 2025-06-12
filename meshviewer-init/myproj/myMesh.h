@@ -19,6 +19,7 @@ public:
 	void normalize();
 
 	void subdivisionCatmullClark();
+	void buildTwins();
 
 	void splitFaceTRIS(myFace *, myPoint3D *);
 

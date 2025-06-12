@@ -257,10 +257,178 @@ void myMesh::splitFaceQUADS(myFace* f, myPoint3D* p)
 }
 
 
-void myMesh::subdivisionCatmullClark()
-{
-	/**** TODO ****/
+void myMesh::subdivisionCatmullClark() {
+	std::map<myFace*, myPoint3D> facePoints;
+	std::map<std::pair<myVertex*, myVertex*>, myPoint3D> edgePoints;
+	std::map<myVertex*, myPoint3D> vertexPoints;
+
+	for (myFace* f : faces) {
+		int count = 0;
+
+		myHalfedge* h = f->adjacent_halfedge;
+		myHalfedge* start = h;
+		myPoint3D sum(0, 0, 0);
+
+		do {
+			sum += *(h->source->point);
+			count++;
+			h = h->next;
+		} while (h != start);
+		facePoints[f] = sum / count;
+	}
+
+	for (myHalfedge* h : halfedges) {
+		myVertex* v1 = h->source;
+		myVertex* v2 = h->next->source;
+
+		auto key = std::make_pair(std::min(v1, v2), std::max(v1, v2));
+		if (edgePoints.count(key)) continue;
+
+		myPoint3D p1 = *(v1->point);
+		myPoint3D p2 = *(v2->point);
+
+		if (h->adjacent_face && h->twin && h->twin->adjacent_face)
+			edgePoints[key] = (p1 + p2 + facePoints[h->adjacent_face] + facePoints[h->twin->adjacent_face]) * 0.25;
+		else
+			edgePoints[key] = (p1 + p2) * 0.5;
+	}
+
+	for (myVertex* v : vertices) {
+		if (!v->originof) {
+			vertexPoints[v] = *(v->point);
+			continue;
+		}
+
+		myHalfedge* h = v->originof;
+		myHalfedge* start = h;
+
+		int k = 0;
+		myPoint3D sumF(0, 0, 0);
+		myPoint3D sumE(0, 0, 0);
+
+		do {
+			if (h->adjacent_face) sumF += facePoints[h->adjacent_face];
+			myPoint3D mid = (*(h->source->point) + *(h->next->source->point)) * 0.5;
+			sumE += mid;
+			k++;
+
+			h = h->twin ? h->twin->next : nullptr;
+		} while (h && h != start);
+
+		myPoint3D F = sumF / k;
+		myPoint3D R = sumE / k;
+		myPoint3D P = *(v->point);
+
+		vertexPoints[v] = (F + R * 2.0 + P * (k - 3)) / k;
+	}
+
+	myMesh newMesh;
+
+	std::map<myFace*, myVertex*> faceVerts;
+	std::map<std::pair<myVertex*, myVertex*>, myVertex*> edgeVerts;
+	std::map<myVertex*, myVertex*> vertexVerts;
+
+	for (std::map<myFace*, myPoint3D>::iterator it = facePoints.begin(); it != facePoints.end(); ++it) {
+		myFace* f = it->first;
+		myPoint3D pt = it->second;
+
+		myVertex* v = new myVertex();
+		v->point = new myPoint3D(pt);
+		faceVerts[f] = v;
+		newMesh.vertices.push_back(v);
+	}
+
+
+	for (std::map<std::pair<myVertex*, myVertex*>, myPoint3D>::iterator it = edgePoints.begin(); it != edgePoints.end(); ++it) {
+		std::pair<myVertex*, myVertex*> e = it->first;
+		myPoint3D pt = it->second;
+
+		myVertex* v = new myVertex();
+		v->point = new myPoint3D(pt);
+		edgeVerts[e] = v;
+		newMesh.vertices.push_back(v);
+	}
+
+
+	for (std::map<myVertex*, myPoint3D>::iterator it = vertexPoints.begin(); it != vertexPoints.end(); ++it) {
+		myVertex* v = it->first;
+		myPoint3D pt = it->second;
+
+		myVertex* vNew = new myVertex();
+		vNew->point = new myPoint3D(pt);
+		vertexVerts[v] = vNew;
+		newMesh.vertices.push_back(vNew);
+	}
+
+	for (myFace* f : faces) {
+		std::vector<myHalfedge*> boundary;
+		myHalfedge* h = f->adjacent_halfedge;
+		myHalfedge* start = h;
+		do {
+			boundary.push_back(h);
+			h = h->next;
+		} while (h != start);
+
+		int k = boundary.size();
+
+		for (int i = 0; i < k; ++i) {
+			myHalfedge* he_i = boundary[i];
+			myHalfedge* he_prev = boundary[(i - 1 + k) % k];
+
+			myVertex* v = he_i->source;
+			myVertex* v_corner = vertexVerts[v];
+			auto key_i = std::make_pair(std::min(he_i->source, he_i->next->source), std::max(he_i->source, he_i->next->source));
+			auto key_prev = std::make_pair(std::min(he_prev->source, he_prev->next->source), std::max(he_prev->source, he_prev->next->source));
+
+			myVertex* v_ei = edgeVerts[key_i];
+			myVertex* v_eprev = edgeVerts[key_prev];
+			myVertex* v_f = faceVerts[f];
+
+			myHalfedge* h0 = new myHalfedge();
+			myHalfedge* h1 = new myHalfedge();
+			myHalfedge* h2 = new myHalfedge();
+			myHalfedge* h3 = new myHalfedge();
+
+			h0->source = v_ei;
+			h1->source = v_f;
+			h2->source = v_eprev;
+			h3->source = v_corner;
+
+			h0->next = h1; h1->next = h2; h2->next = h3; h3->next = h0;
+			h0->prev = h3; h1->prev = h0; h2->prev = h1; h3->prev = h2;
+
+			myFace* newF = new myFace();
+			newF->adjacent_halfedge = h0;
+
+			h0->adjacent_face = newF;
+			h1->adjacent_face = newF;
+			h2->adjacent_face = newF;
+			h3->adjacent_face = newF;
+
+			if (!v_corner->originof) v_corner->originof = h3;
+			if (!v_ei->originof) v_ei->originof = h0;
+			if (!v_f->originof) v_f->originof = h1;
+			if (!v_eprev->originof) v_eprev->originof = h2;
+
+			newMesh.faces.push_back(newF);
+			newMesh.halfedges.push_back(h0);
+			newMesh.halfedges.push_back(h1);
+			newMesh.halfedges.push_back(h2);
+			newMesh.halfedges.push_back(h3);
+		}
+	}
+
+	newMesh.buildTwins();
+
+	newMesh.computeNormals();
+	
+	clear();
+	
+	*this = std::move(newMesh);
 }
+
+
+
 
 void myMesh::triangulate()
 {
@@ -357,8 +525,6 @@ bool myMesh::triangulate(myFace* face)
 
 
 void myMesh::simplify() {
-
-
 	if (halfedges.empty()) {
 		std::cout << "Maillage vide, pas de simplification." << std::endl;
 		return;
@@ -369,7 +535,6 @@ void myMesh::simplify() {
 		collapsesToAttempt = 1;
 	}
 
-
 	for (int i = 0; i < collapsesToAttempt; ++i) {
 		if (vertices.size() <= 3 || halfedges.size() < 6) {
 			std::cout << "Maillage trop petit, simplification arrêtée." << std::endl;
@@ -379,6 +544,7 @@ void myMesh::simplify() {
 		myHalfedge* minEdge = nullptr;
 		double minDistSq = std::numeric_limits<double>::max();
 
+		// Trouver l'arête la plus courte
 		for (myHalfedge* he : halfedges) {
 			if (!he || !he->twin || !he->source || !he->twin->source || !he->source->point || !he->twin->source->point) continue;
 			if (he->source == he->twin->source) continue;
@@ -409,6 +575,7 @@ void myMesh::simplify() {
 			continue;
 		}
 
+		// Mettre à jour la position du sommet A au milieu de l'arête
 		myPoint3D midpoint(
 			(A->point->X + B->point->X) * 0.5,
 			(A->point->Y + B->point->Y) * 0.5,
@@ -416,31 +583,32 @@ void myMesh::simplify() {
 		);
 		*(A->point) = midpoint;
 
-		myHalfedge* candidate_originof_from_B_edges = nullptr;
+		// Transférer toutes les arêtes originaires de B vers A
 		for (myHalfedge* he : halfedges) {
 			if (he && he->source == B) {
 				he->source = A;
-				if (he != minEdge && he != minEdge->twin) {
-					candidate_originof_from_B_edges = he;
-				}
 			}
 		}
 
-		std::set<myFace*> faces_to_delete_set;
-		if (minEdge->adjacent_face) faces_to_delete_set.insert(minEdge->adjacent_face);
-		if (minEdge->twin && minEdge->twin->adjacent_face) faces_to_delete_set.insert(minEdge->twin->adjacent_face);
+		// Identifier les faces qui deviennent invalides après la contraction (ex : avec des sommets dupliqués)
+		std::set<myFace*> faces_to_delete;
+		if (minEdge->adjacent_face) faces_to_delete.insert(minEdge->adjacent_face);
+		if (minEdge->twin && minEdge->twin->adjacent_face) faces_to_delete.insert(minEdge->twin->adjacent_face);
 
 		for (myFace* f : faces) {
-			if (faces_to_delete_set.count(f)) continue;
+			if (faces_to_delete.count(f)) continue;
 
 			std::set<myVertex*> uniqueVerticesInFace;
 			myHalfedge* start_he = f->adjacent_halfedge;
-			if (!start_he) { faces_to_delete_set.insert(f); continue; }
+			if (!start_he) {
+				faces_to_delete.insert(f);
+				continue;
+			}
 
 			myHalfedge* current_he = start_he;
 			bool faceIsValid = true;
 			int edgeCount = 0;
-			int max_loop_count = vertices.size() + 5;
+			int max_loop_count = vertices.size() + 5; // limite pour éviter boucle infinie
 
 			do {
 				if (!current_he || !current_he->source) { faceIsValid = false; break; }
@@ -454,88 +622,69 @@ void myMesh::simplify() {
 			if (edgeCount < 3) faceIsValid = false;
 
 			if (!faceIsValid) {
-				faces_to_delete_set.insert(f);
+				faces_to_delete.insert(f);
 			}
 		}
 
-		std::set<myHalfedge*> halfedges_to_delete_set;
-		halfedges_to_delete_set.insert(minEdge);
-		if (minEdge->twin) halfedges_to_delete_set.insert(minEdge->twin);
-
-		for (myFace* f_del : faces_to_delete_set) {
+		// Supprimer les faces invalides et leurs demi-arêtes
+		std::set<myHalfedge*> halfedges_to_delete;
+		for (myFace* f_del : faces_to_delete) {
 			myHalfedge* h = f_del->adjacent_halfedge;
-			if (!h) continue;
-			do {
-				halfedges_to_delete_set.insert(h);
-				h = h->next;
-			} while (h != f_del->adjacent_halfedge && h != nullptr);
-		}
-
-		if (A->originof == minEdge || A->originof == nullptr || halfedges_to_delete_set.count(A->originof)) {
-			A->originof = nullptr;
-			if (candidate_originof_from_B_edges && candidate_originof_from_B_edges->source == A && !halfedges_to_delete_set.count(candidate_originof_from_B_edges)) {
-				A->originof = candidate_originof_from_B_edges;
-			}
-			if (!A->originof) {
-				myHalfedge* he_around_A = minEdge->next;
-				if (he_around_A && !halfedges_to_delete_set.count(he_around_A) && he_around_A->source == A) {
-					A->originof = he_around_A;
-				}
-				else {
-					he_around_A = (minEdge->twin && minEdge->twin->next) ? minEdge->twin->next : nullptr;
-					if (he_around_A && !halfedges_to_delete_set.count(he_around_A) && he_around_A->source == A) {
-						A->originof = he_around_A;
-					}
-				}
-			}
-			if (!A->originof) {
-				for (myHalfedge* he_iter : halfedges) {
-					if (he_iter->source == A && !halfedges_to_delete_set.count(he_iter)) {
-						A->originof = he_iter;
-						break;
-					}
-				}
+			if (h) {
+				myHalfedge* start = h;
+				do {
+					halfedges_to_delete.insert(h);
+					h = h->next;
+				} while (h != start && h != nullptr);
 			}
 		}
 
-		for (myHalfedge* he_iter : halfedges) {
-			if (halfedges_to_delete_set.count(he_iter)) {
-				continue;
-			}
-			if (he_iter->twin && halfedges_to_delete_set.count(he_iter->twin)) {
-				he_iter->twin = nullptr;
-			}
+		// Supprimer les demi-arêtes sélectionnées
+		for (myHalfedge* h_del : halfedges_to_delete) {
+			// Supprimer le twin de la demi-arête s'il existe
+			if (h_del->twin) h_del->twin->twin = nullptr;
+
+			auto it = std::find(halfedges.begin(), halfedges.end(), h_del);
+			if (it != halfedges.end()) halfedges.erase(it);
+
+			delete h_del;
 		}
 
-		for (myHalfedge* he_del : halfedges_to_delete_set) {
-			auto it = std::find(halfedges.begin(), halfedges.end(), he_del);
-			if (it != halfedges.end()) {
-				halfedges.erase(it);
-			}
-			delete he_del;
-		}
-		myHalfedge* twin_of_min_edge = minEdge->twin;
-		minEdge = nullptr;
-		if (twin_of_min_edge) {}
-
-		for (myFace* f_del : faces_to_delete_set) {
+		// Supprimer les faces invalides
+		for (myFace* f_del : faces_to_delete) {
 			auto it = std::find(faces.begin(), faces.end(), f_del);
-			if (it != faces.end()) {
-				faces.erase(it);
-			}
+			if (it != faces.end()) faces.erase(it);
 			delete f_del;
 		}
 
-		auto it_v = std::find(vertices.begin(), vertices.end(), B);
-		if (it_v != vertices.end()) {
-			vertices.erase(it_v);
-		}
+		// Supprimer le sommet B (car fusionné avec A)
+		auto itv = std::find(vertices.begin(), vertices.end(), B);
+		if (itv != vertices.end()) vertices.erase(itv);
 		delete B;
-		B = nullptr;
 
+		computeNormals();
+		checkMesh();
 	}
+}
 
-	std::cout << "Simplification terminée." << std::endl;
-	computeNormals();
-	checkMesh();
+
+void myMesh::buildTwins()
+{
+	std::map<std::pair<myVertex*, myVertex*>, myHalfedge*> edgeMap;
+
+	for (myHalfedge* he : halfedges)
+	{
+		myVertex* from = he->source;
+		myVertex* to = he->next->source;
+
+		auto key = std::make_pair(from, to);
+		auto twinKey = std::make_pair(to, from);
+
+		edgeMap[key] = he;
+
+		if (edgeMap.count(twinKey)) {
+			he->twin = edgeMap[twinKey];
+			edgeMap[twinKey]->twin = he;
+		}
+	}
 }
