@@ -39,7 +39,3 @@ meshviewer-init/myproj/
 ├── myPoint3D / myVector3D           # géométrie 3D
 └── helperFunctions.h  # fonctions utilitaires
 ```
-
----
-🔗 **Fiche projet** : [afouanee.dev/projects/opengl-3d](https://afouanee.dev/projects/opengl-3d)
-👤 **Auteur** : Afouane MOUHAMAD — [Portfolio](https://afouanee.dev) · [LinkedIn](https://linkedin.com/in/afouane-mouhamad)
